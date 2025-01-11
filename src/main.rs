@@ -1,9 +1,11 @@
-use std::{env::current_dir, fs::{remove_dir_all, File}, io::{BufRead, BufReader, Error, ErrorKind}, path::Path, process::{Command, ExitStatus}};
+use std::{env::current_dir, fs::{self, remove_dir_all, File}, io::{BufRead, BufReader, BufWriter, Error, ErrorKind, Seek, SeekFrom, Write}, path::Path, process::{Command, ExitStatus}};
 
 fn main() -> Result<(), Error>{
     let cwd = current_dir()?;
 
     let remote_origin = get_remote_origin(&cwd)?;
+
+    update_indexhtml(&cwd.join("dist"), &remote_origin)?;
 
     push_dir_to_branch(&remote_origin, &cwd.join("dist"), "gh-pages")?;
 
@@ -47,6 +49,41 @@ fn get_remote_origin(cwd: &Path) -> Result<String, Error>{
     Err(Error::new(ErrorKind::NotFound, "Could not find remote origin URL in .git/config"))
 }
 
+
+/// Updates index.html to use the correct file paths for gh-pages to work correctly. 
+/// 
+/// # Example
+/// ```
+/// let cwd = std::env::current_dir()?;
+/// update_indexhtml(cwd.join("dist"), "https://github.com/FradulentUser/MyRepo.git")?;
+/// ```
+fn update_indexhtml(dist_path: &Path, remote_origin: &str) -> Result<(), Error>{
+    let repo_name = remote_origin.rsplit_once(".git")
+                                                .unwrap_or((remote_origin,"")).0
+                                                .rsplit_once("/")
+                                                .unwrap_or(("",remote_origin)).1;
+    let dirs: Vec<String> = dist_path.read_dir()?
+                                .map_while(Result::ok)
+                                .filter_map(|dir| Some(dir.path().file_name()?.to_str()?.to_owned()))
+                                .collect();
+    
+    let mut index_html = File::options().read(true).write(true).open(dist_path.join("index.html"))?;
+    
+    // modify index.html to use the correct file paths
+    let read_lines: Vec<String> = BufReader::new(&index_html)
+        .lines().into_iter().map_while(Result::ok)
+        .map(|mut line| {
+            for dir in dirs.iter() {
+                if let Some(idx) = line.find(dir){line.insert_str(idx,&format!("{}/",repo_name))}
+            }
+            line
+            }).collect();
+    
+    index_html.seek(SeekFrom::Start(0))?;
+    index_html.write_all(read_lines.join("\n").as_bytes())?;
+
+    Ok(())
+}
 
 /// Commits and force pushes the contents of the specified directory to the given branch of the remote origin
 /// 
