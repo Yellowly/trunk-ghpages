@@ -5,7 +5,7 @@ fn main() -> Result<(), Error>{
 
     let remote_origin = get_remote_origin(&cwd)?;
 
-    // push_dir_to_branch(&remote_origin, &cwd.join("dist"), "gh-pages")?;
+    push_dir_to_branch(&remote_origin, &cwd.join("dist"), "gh-pages")?;
 
     Ok(())
 }
